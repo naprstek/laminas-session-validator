@@ -1,2 +1,2 @@
 # zend-session-validator
-Aditional session validators for ZF3
+Aditional session validators for Laminas. Migrated from zend-session-validator.
