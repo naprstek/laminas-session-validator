@@ -3,6 +3,7 @@
 namespace Laminas\Session\Validator;
 
 use Jenssegers\Agent\Agent;
+use Laminas\Http\PhpEnvironment\RemoteAddress;
 use Laminas\Session\Validator\ValidatorInterface as SessionValidator;
 
 class OwnSession implements SessionValidator
@@ -13,6 +14,32 @@ class OwnSession implements SessionValidator
      * @var string
      */
     protected $data;
+
+    /**
+     * Whether to use proxy addresses or not.
+     *
+     * As default this setting is disabled - IP address is mostly needed to increase
+     * security. HTTP_* are not reliable since can easily be spoofed. It can be enabled
+     * just for more flexibility, but if user uses proxy to connect to trusted services
+     * it's his/her own risk, only reliable field for IP address is $_SERVER['REMOTE_ADDR'].
+     *
+     * @var bool
+     */
+    protected static $useProxy = false;
+
+    /**
+     * List of trusted proxy IP addresses
+     *
+     * @var array
+     */
+    protected static $trustedProxies = [];
+
+    /**
+     * HTTP header to introspect for proxies
+     *
+     * @var string
+     */
+    protected static $proxyHeader = 'HTTP_X_FORWARDED_FOR';
 
     /**
      * Constructor
@@ -34,7 +61,7 @@ class OwnSession implements SessionValidator
     protected function createData()
     {
         $agent = new Agent();
-        return md5(session_id() . '|' . $agent->device() . '|' . $agent->browser() . '|' . $agent->platform() . '|' . implode(',', $agent->languages()));
+        return md5(session_id() . "|{$agent->device()}|{$agent->browser()}|{$agent->platform()}|" . implode(',', $agent->languages()) . ($this->getUseProxy() ? "|{$this->getIpAddress()}" : ''));
     }
 
     /**
@@ -47,6 +74,66 @@ class OwnSession implements SessionValidator
     {
         $data = $this->createData();
         return ($data === $this->getData());
+    }
+
+    /**
+     * Changes proxy handling setting.
+     *
+     * This must be static method, since validators are recovered automatically
+     * at session read, so this is the only way to switch setting.
+     *
+     * @param bool  $useProxy Whether to check also proxied IP addresses.
+     * @return void
+     */
+    public static function setUseProxy($useProxy = true)
+    {
+        static::$useProxy = $useProxy;
+    }
+
+    /**
+     * Checks proxy handling setting.
+     *
+     * @return bool Current setting value.
+     */
+    public static function getUseProxy()
+    {
+        return static::$useProxy;
+    }
+
+    /**
+     * Set list of trusted proxy addresses
+     *
+     * @param  array $trustedProxies
+     * @return void
+     */
+    public static function setTrustedProxies(array $trustedProxies)
+    {
+        static::$trustedProxies = $trustedProxies;
+    }
+
+    /**
+     * Set the header to introspect for proxy IPs
+     *
+     * @param  string $header
+     * @return void
+     */
+    public static function setProxyHeader($header = 'X-Forwarded-For')
+    {
+        static::$proxyHeader = $header;
+    }
+
+    /**
+     * Returns client IP address.
+     *
+     * @return string IP address.
+     */
+    protected function getIpAddress()
+    {
+        $remoteAddress = new RemoteAddress();
+        $remoteAddress->setUseProxy(static::$useProxy);
+        $remoteAddress->setTrustedProxies(static::$trustedProxies);
+        $remoteAddress->setProxyHeader(static::$proxyHeader);
+        return $remoteAddress->getIpAddress();
     }
 
     /**
